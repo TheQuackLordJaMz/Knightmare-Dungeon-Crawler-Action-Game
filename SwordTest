@@ -1,0 +1,63 @@
+using UnityEngine;
+
+
+/// <summary>
+/// Attached to the Player's weapon (sword) to detect collisions with enemies.
+/// Calculates randomized damage and Critical Hit multipliers.
+/// </summary>
+public class SwordTest : MonoBehaviour
+{
+    [Header("Base Damage")]
+    [Tooltip("The lowest possible damage this sword can deal.")]
+    public float minDamage = 10f;
+    [Tooltip("The highest possible damage this sword can deal.")]
+    public float maxDamage = 20f;
+
+    [Header("Critical Hit Settings")]
+    [Range(0, 1)]
+    [Tooltip("Probability of a crit (0.2 = 20% chance).")]
+    public float critChance = 0.2f;
+
+    [Tooltip("The damage multiplier applied when a Critical Hit occurs.")]
+    public float critMultiplier = 2.0f;
+
+    /// <summary>
+    /// Triggered when the sword's collider enters another collider.
+    /// Note: The sword's collider is usually enabled/disabled by PlayerCombat animation events.
+    /// </summary>
+    private void OnTriggerEnter(Collider other)
+    {
+        // 1. TAG CHECK: Ensure we only damage objects marked as "Enemy"
+        if (other.CompareTag("Enemy"))
+        {
+            // 2. RANDOMIZE: Pick a random number between our Min and Max range
+            float finalDamage = Random.Range(minDamage, maxDamage);
+
+            // 3. CRIT ROLL: Random.value returns a number between 0 and 1.
+            // If the result is less than or equal to our critChance, it's a Crit!
+            if (Random.value <= critChance)
+            {
+                finalDamage *= critMultiplier;
+
+                // Debug.Log with color makes crit notifications pop in the Console
+                Debug.Log("<color=red>CRITICAL HIT!</color> Damage: " + finalDamage);
+
+                // TIP: This is where you would trigger a "Heavy Hit" particle effect
+            }
+
+            // 4. APPLY DAMAGE: Find the HealthSystem on the enemy and call TakeDamage
+            HealthSystem enemy = other.GetComponent<HealthSystem>();
+            if (enemy != null)
+            {
+                enemy.TakeDamage(finalDamage);
+            }
+
+            // 5. VISUAL FEEDBACK: TryGetComponent is a high-performance way to check 
+            // if the enemy has a Flash script without causing errors if they don't.
+            if (other.TryGetComponent<DamageFlash>(out DamageFlash flash))
+            {
+                flash.TakeDamage();
+            }
+        }
+    }
+}
