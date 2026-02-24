@@ -1,0 +1,14 @@
+using UnityEngine;
+using UnityEngine.UI; // Required for Image
+
+public class HealthBar : MonoBehaviour
+{
+    // Drag your "Foreground" or "Fill" Image here
+    [SerializeField] private Image healthBarSprite;
+
+    public void UpdateHealthBar(float maxHealth, float currentHealth)
+    {
+        // This math changes the width of the red/green bar
+        healthBarSprite.fillAmount = currentHealth / maxHealth;
+    }
+}
