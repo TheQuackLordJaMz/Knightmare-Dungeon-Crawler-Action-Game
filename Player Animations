@@ -1,0 +1,48 @@
+using UnityEngine;
+
+/// <summary>
+/// Bridges the gap between movement logic and the Animator component.
+/// This centralizes all animation calls so other scripts don't have to touch the Animator directly.
+/// </summary>
+public class PlayerAnimations : MonoBehaviour
+{
+    private Animator playerAnim;
+    private PlayerMovement playerMovement;
+
+    private void Awake()
+    {
+        // 1. CACHE REFERENCES: Grab the components on the same GameObject.
+        // We need the Animator to play the clips, and PlayerMovement to see how fast we are going.
+        playerAnim = GetComponent<Animator>();
+        playerMovement = GetComponent<PlayerMovement>();
+    }
+
+    private void Update()
+    {
+        // 2. READ MOVEMENT: Check the 'CurrentInputMagnitude' property we created in PlayerMovement.
+        // Magnitude is usually 0 (idle) to 1 (full tilt/run).
+        float speedForAnimator = playerMovement.CurrentInputMagnitude;
+
+        // 3. SYNC ANIMATOR: Tell the Animator the current speed.
+        // In the Animator window, make sure you have a Float parameter named exactly "Speed".
+        // This usually drives a 'Blend Tree' that transitions between Idle, Walk, and Run.
+        if (playerAnim != null)
+        {
+            playerAnim.SetFloat("Speed", speedForAnimator);
+        }
+    }
+
+    /// <summary>
+    /// Forces the Animator to transition into the Death state.
+    /// This is a 'Public' method so it can be called by PlayerCollisions or HealthSystem.
+    /// </summary>
+    public void TriggerDeath()
+    {
+        // 4. TRIGGER: Triggers are special parameters that act like buttons.
+        // Once the Animator 'consumes' the trigger to start the death clip, the trigger resets to false.
+        if (playerAnim != null)
+        {
+            playerAnim.SetTrigger("Die");
+        }
+    }
+}
