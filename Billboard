@@ -1,0 +1,19 @@
+using UnityEngine;
+
+public class BillBoard : MonoBehaviour
+{
+    private Transform cam;
+
+    void Start()
+    {
+        // Find the main camera in the scene
+        cam = Camera.main.transform;
+    }
+
+    // LateUpdate runs after the player has moved/rotated
+    void LateUpdate()
+    {
+        // Force the bar to look at the camera
+        transform.LookAt(transform.position + cam.forward);
+    }
+}
