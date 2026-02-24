@@ -1,0 +1,22 @@
+using UnityEngine;
+
+public class SimpleDamage : MonoBehaviour
+{
+    public float damageAmount = 10f;
+
+    // This runs automatically when the sword touches the Player
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            // Check if player has health
+            HealthSystem health = other.GetComponent<HealthSystem>();
+
+            if (health != null)
+            {
+                health.TakeDamage(damageAmount);
+                Debug.Log("The sword hit the player!");
+            }
+        }
+    }
+}
