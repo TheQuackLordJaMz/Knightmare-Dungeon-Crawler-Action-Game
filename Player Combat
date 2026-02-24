@@ -1,0 +1,107 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+/// <summary>
+/// Manages player attack sequences, combo timing, and weapon hitboxes.
+/// Uses a 'Combo Step' system to cycle through different animations.
+/// </summary>
+public class PlayerCombat : MonoBehaviour
+{
+    // --- Private References ---
+    private Animator animator;
+    private PlayerCollisions playerCollisions;
+    private HealthSystem healthSystem;
+
+    // --- Combo Tracking ---
+    private int comboStep = 0;      // Which attack in the sequence are we on? (1, 2, or 3)
+    private float lastClickTime;    // Stores the timestamp of the last successful attack input
+
+    [Header("Combat Settings")]
+    [Tooltip("If the player waits longer than this (in seconds), the combo resets to Attack 1.")]
+    public float comboResetTime = 0.9f;
+
+    [Tooltip("The minimum delay between clicks. Prevents spamming animations faster than they can play.")]
+    public float minTimeBetweenHits = 0.2f;
+
+    [Header("Weapon References")]
+    [SerializeField]
+    [Tooltip("Visual trail effect attached to the sword.")]
+    private TrailRenderer swordTrail;
+
+    [SerializeField]
+    [Tooltip("The physical collider on the sword that hits enemies.")]
+    private Collider weaponCollider;
+
+    void Awake()
+    {
+        // Cache components on the same GameObject for performance
+        animator = GetComponent<Animator>();
+        playerCollisions = GetComponent<PlayerCollisions>();
+        healthSystem = GetComponent<HealthSystem>();
+    }
+
+    private void Start()
+    {
+        // SAFETY: Disable the sword's collider so you don't hurt enemies just by walking into them.
+        if (weaponCollider != null)
+            weaponCollider.enabled = false;
+    }
+
+    // --- ANIMATION EVENT FUNCTIONS ---
+    // Pro Tip: These methods must be marked 'public' to be seen by the Animation window events.
+
+    /// <summary> Called via Animation Event at the start of a swing. </summary>
+    public void EnableWeaponCollider()
+    {
+        if (weaponCollider != null) weaponCollider.enabled = true;
+    }
+
+    /// <summary> Called via Animation Event at the end of a swing. </summary>
+    public void DisableWeaponCollider()
+    {
+        if (weaponCollider != null) weaponCollider.enabled = false;
+    }
+
+    /// <summary>
+    /// Triggered by the Input System (e.g., Left Mouse Click).
+    /// Handles the logic for which attack animation to play next.
+    /// </summary>
+    public void OnAttack()
+    {
+        // 1. DEATH CHECK: Don't allow attacking if the player is dead.
+        if (playerCollisions != null && playerCollisions.isDead) return;
+
+        // 2. RATE LIMITING: If the player clicks too fast, ignore the input.
+        if (Time.time - lastClickTime < minTimeBetweenHits) return;
+
+        // 3. COMBO RESET: If too much time passed since the last hit, start over at Attack 1.
+        if (Time.time - lastClickTime > comboResetTime)
+        {
+            comboStep = 0;
+        }
+
+        // 4. STEP FORWARD: Log the current time and move to the next attack in the chain.
+        lastClickTime = Time.time;
+        comboStep++;
+
+        // 5. ANIMATION PICKER:
+        // CrossFade is used to blend smoothly from the current state into the attack.
+        float fadeTime = 0.1f;
+
+        if (comboStep == 1)
+        {
+            animator.CrossFade("Attack1", fadeTime);
+        }
+        else if (comboStep == 2)
+        {
+            animator.CrossFade("Attack2", fadeTime);
+        }
+        else if (comboStep == 3)
+        {
+            animator.CrossFade("Attack3", fadeTime);
+            comboStep = 0; // The combo is finished! Reset to 0 so the next click is Attack 1.
+        }
+    }
+}
