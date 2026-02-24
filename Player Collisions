@@ -1,0 +1,169 @@
+using UnityEngine;
+using UnityEngine.SceneManagement; // Required to reload the level on death
+using System.Collections;
+using System.Collections.Generic;
+
+/// <summary>
+/// Detects physical interactions with the world, such as Hazards (damage/knockback) 
+/// and Pickups (healing). Also manages the player's death sequence.
+/// </summary>
+public class PlayerCollisions : MonoBehaviour
+{
+    // --- Component References ---
+    private PlayerMovement playerMovement;
+    private PlayerCombat playerCombat;
+    private Animator animator;
+    private Rigidbody rb;
+    private HealthSystem healthSystem;
+
+    // Public bool so other scripts (like Movement) know to stop if the player is dead
+    [HideInInspector] public bool isDead = false;
+
+    [Header("Knockback Settings")]
+    [Tooltip("How far the player is pushed back when hitting a hazard.")]
+    public float knockbackDistance = 2.5f;
+    [Tooltip("How long the push-back movement lasts.")]
+    public float knockbackDuration = 0.2f;
+
+    [Header("Damage Settings")]
+    [Tooltip("Duration of Invincibility Frames (i-frames) after being hit.")]
+    public float damageCooldown = 1.5f;
+    private float lastDamageTime; // Timestamp of the last hit taken
+
+    private void Awake()
+    {
+        // Cache all local components for quick access
+        playerMovement = GetComponent<PlayerMovement>();
+        playerCombat = GetComponent<PlayerCombat>();
+        animator = GetComponent<Animator>();
+        rb = GetComponent<Rigidbody>();
+        healthSystem = GetComponent<HealthSystem>();
+    }
+
+    /// <summary>
+    /// Unity's physics engine calls this when the player touches a 'Trigger' collider.
+    /// </summary>
+    private void OnTriggerEnter(Collider other)
+    {
+        // --- 1. HAZARD LOGIC ---
+        // Check if the object is a hazard, we aren't dead, and i-frames have expired
+        if (other.CompareTag("Hazard") && !isDead && Time.time > lastDamageTime + damageCooldown)
+        {
+            // Apply damage through the HealthSystem
+            if (healthSystem != null) healthSystem.TakeDamage(20f);
+            lastDamageTime = Time.time; // Start the i-frame timer
+
+            // Start visual blinking
+            StartCoroutine(FlashRoutine());
+
+            // Calculate push direction (Away from the hazard)
+            Vector3 pushDir = (transform.position - other.transform.position);
+            pushDir.y = 0; // Lock movement to the horizontal plane
+            StartCoroutine(KnockbackRoutine(pushDir.normalized));
+        }
+
+        // --- 2. HEALTH PICKUP LOGIC ---
+        if (other.CompareTag("Heal") && !isDead)
+        {
+            if (healthSystem != null)
+            {
+                healthSystem.Heal(25f);
+                Debug.Log("Healed! Object: " + other.gameObject.name);
+
+                // Remove the pickup from the world
+                Destroy(other.gameObject);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Smoothly slides the player backwards while temporarily disabling user input.
+    /// </summary>
+    private IEnumerator KnockbackRoutine(Vector3 direction)
+    {
+        // 1. DISABLE CONTROL: Prevents the player from walking 'through' the knockback
+        playerMovement.enabled = false;
+
+        float elapsed = 0f;
+        Vector3 startPos = rb.position;
+        Vector3 targetPos = startPos + (direction * knockbackDistance);
+
+        // 2. LERP MOVE: Move from start to target over the duration
+        while (elapsed < knockbackDuration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / knockbackDuration;
+
+            // MovePosition is the 'best practice' for Rigidbody-based movement
+            rb.MovePosition(Vector3.Lerp(startPos, targetPos, percent));
+            yield return null;
+        }
+
+        // 3. RESTORE CONTROL: Briefly wait for physics to settle then re-enable movement
+        yield return new WaitForSeconds(0.05f);
+        if (!isDead) playerMovement.enabled = true;
+    }
+
+    /// <summary>
+    /// Blinks the player model during the i-frame period to show they are invincible.
+    /// </summary>
+    private IEnumerator FlashRoutine()
+    {
+        // Get all renderers (body, hair, gear) attached to the player
+        Renderer[] allRenderers = GetComponentsInChildren<Renderer>();
+        List<Renderer> activeRenderers = new List<Renderer>();
+
+        // Filter out hidden renderers (like ghost meshes or disabled gear)
+        foreach (var r in allRenderers)
+        {
+            if (r.enabled) activeRenderers.Add(r);
+        }
+
+        float endTime = Time.time + damageCooldown;
+
+        while (Time.time < endTime)
+        {
+            // Toggle visibility OFF
+            foreach (var r in activeRenderers) r.enabled = false;
+            yield return new WaitForSeconds(0.1f);
+
+            // Toggle visibility ON
+            foreach (var r in activeRenderers) r.enabled = true;
+            yield return new WaitForSeconds(0.1f);
+        }
+
+        // SAFETY: Always ensure the player is visible after flashing ends
+        foreach (var r in activeRenderers) r.enabled = true;
+    }
+
+    /// <summary>
+    /// Kills the player, plays the animation, and reloads the level.
+    /// </summary>
+    public void Die()
+    {
+        if (isDead) return; // Guard clause to prevent the death logic running twice
+        isDead = true;
+
+        StopAllCoroutines(); // Stop any active knockbacks or flashes
+
+        // Permanently shut down movement and combat
+        playerMovement.enabled = false;
+        if (playerCombat != null) playerCombat.enabled = false;
+
+        // Play the death animation instantly
+        animator.Play("Death", 0, 0f);
+
+        // Wait for the animation to finish before resetting
+        StartCoroutine(ResetLevelAfterDelay(3f));
+    }
+
+    /// <summary>
+    /// Reloads the current scene after a short delay.
+    /// </summary>
+    private IEnumerator ResetLevelAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        // Uses SceneManager to get the name of the current level and reload it
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+}
