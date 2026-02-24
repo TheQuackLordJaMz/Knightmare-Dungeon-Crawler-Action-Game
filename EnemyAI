@@ -1,0 +1,137 @@
+using UnityEngine;
+using UnityEngine.AI; // Required for NavMeshAgent pathfinding
+
+/// <summary>
+/// A Simple State-Based AI that Chases the player when close and Attacks when in range.
+/// Requires a NavMeshAgent component and a baked NavMesh in the scene.
+/// </summary>
+public class EnemyAI : MonoBehaviour
+{
+    [Header("Detection & Combat")]
+    [Tooltip("The Target the enemy will chase. Usually found automatically by Tag.")]
+    public Transform player;
+    [Tooltip("How far the enemy can 'see' the player to start chasing.")]
+    public float detectionRange = 10f;
+    [Tooltip("How close the enemy must be to stop moving and start swinging.")]
+    public float attackRange = 2f;
+    [Tooltip("Delay between attack animations.")]
+    public float attackCooldown = 2f;
+
+    [Header("Components")]
+    private NavMeshAgent agent;
+    private Animator anim;
+    private HealthSystem myHealth;
+    private float lastAttackTime;
+
+    void Awake()
+    {
+        // 1. CACHE COMPONENTS: Gather references for movement, animation, and health.
+        agent = GetComponent<NavMeshAgent>();
+        anim = GetComponent<Animator>();
+        myHealth = GetComponent<HealthSystem>();
+
+        // 2. AUTO-FIND: If the player isn't dragged into the Inspector, find them by Tag.
+        if (player == null)
+        {
+            GameObject p = GameObject.FindWithTag("Player");
+            if (p != null) player = p.transform;
+        }
+    }
+
+    void Update()
+    {
+        // 3. SAFETY CHECK: If the enemy is dead or the player is gone, stop all AI logic.
+        if (player == null || (myHealth != null && myHealth.currentHealth <= 0))
+        {
+            StopEnemy();
+            return;
+        }
+
+        // 4. DISTANCE CHECK: Calculate how far away the player is.
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+
+        // 5. STATE MACHINE LOGIC:
+        if (distanceToPlayer <= attackRange)
+        {
+            // STATE: ATTACKING
+            StopEnemy();
+            FacePlayer(); // Keep looking at the player even if stopped
+
+            if (Time.time > lastAttackTime + attackCooldown)
+            {
+                Attack();
+            }
+        }
+        else if (distanceToPlayer <= detectionRange)
+        {
+            // STATE: CHASING
+            Chase();
+        }
+        else
+        {
+            // STATE: IDLE (Too far away to care)
+            StopEnemy();
+        }
+
+        // 6. ANIMATION SYNC: Tell the Animator how fast the NavMeshAgent is physically moving.
+        if (anim != null)
+        {
+            // .velocity.magnitude is the current speed (0 if standing, maxSpeed if running).
+            float currentSpeed = agent.velocity.magnitude;
+            anim.SetFloat("Speed", currentSpeed);
+        }
+    }
+
+    /// <summary> Activates the NavMeshAgent to follow the player's position. </summary>
+    void Chase()
+    {
+        if (agent.isOnNavMesh)
+        {
+            agent.isStopped = false;
+            agent.SetDestination(player.position);
+        }
+    }
+
+    /// <summary> Stops the NavMeshAgent and kills any sliding momentum. </summary>
+    void StopEnemy()
+    {
+        if (agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero; // Stops the "sliding" effect
+        }
+    }
+
+    /// <summary> Smoothly rotates the enemy to face the player. </summary>
+    void FacePlayer()
+    {
+        Vector3 direction = (player.position - transform.position).normalized;
+        direction.y = 0; // Lock the Y axis so the enemy doesn't lean forward/back
+
+        if (direction != Vector3.zero)
+        {
+            Quaternion lookRotation = Quaternion.LookRotation(direction);
+            // Slerp makes the turn smooth rather than an instant snap.
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * 8f);
+        }
+    }
+
+    /// <summary> Triggers the Attack animation. Damage is usually handled by a script on the weapon. </summary>
+    void Attack()
+    {
+        lastAttackTime = Time.time;
+        if (anim != null) anim.SetTrigger("Attack");
+    }
+
+    /// <summary>
+    /// Draw visual spheres in the Unity Editor to help you tune the detection/attack ranges.
+    /// These spheres do not appear in the final game.
+    /// </summary>
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detectionRange);
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, attackRange);
+    }
+}
