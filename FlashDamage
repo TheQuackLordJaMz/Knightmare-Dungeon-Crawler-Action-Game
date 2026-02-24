@@ -1,0 +1,67 @@
+using System.Collections;
+using UnityEngine;
+
+/// <summary>
+/// Changes the object's material color briefly when hit to provide a "hit-flash" visual effect.
+/// Works best on simple 3D models with a single main material color.
+/// </summary>
+public class DamageFlash : MonoBehaviour
+{
+    private Renderer objRenderer;    // Reference to the MeshRenderer or SkinnedMeshRenderer
+    private Color originalColor;     // Stores the starting color (e.g., white or grey)
+    private Coroutine flashCoroutine; // Reference to the active flash so we can restart it
+
+    [Header("Flash Settings")]
+    [Tooltip("The color the object turns when hit (usually Red or White).")]
+    public Color flashColor = Color.red;
+
+    [Tooltip("How long (in seconds) the flash color stays before reverting.")]
+    public float flashDuration = 0.1f;
+
+    void Start()
+    {
+        // 1. INITIALIZE: Find the renderer component on this GameObject
+        objRenderer = GetComponent<Renderer>();
+
+        // 2. CACHE COLOR: Remember the original color so we can restore it accurately
+        // Note: This accesses the 'Material' which creates a local instance for this object.
+        if (objRenderer != null)
+        {
+            originalColor = objRenderer.material.color;
+        }
+    }
+
+    /// <summary>
+    /// Public method to be called by a weapon or hazard script (e.g., SwordTest).
+    /// </summary>
+    public void TakeDamage()
+    {
+        // 3. OVERLAP PREVENTION: If the object is already flashing, stop the old timer.
+        // This prevents the color from getting "stuck" if the object is hit rapidly.
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+        }
+
+        // 4. START: Run the blink logic independently of the main Update loop
+        flashCoroutine = StartCoroutine(FlashRoutine());
+    }
+
+    /// <summary>
+    /// Coroutine: Toggles the color, waits, and then resets it.
+    /// </summary>
+    private IEnumerator FlashRoutine()
+    {
+        // STEP A: Apply the "Hit" color to the material
+        objRenderer.material.color = flashColor;
+
+        // STEP B: Pause execution for the specified duration (e.g., 0.1 seconds)
+        yield return new WaitForSeconds(flashDuration);
+
+        // STEP C: Revert to the original cached color
+        objRenderer.material.color = originalColor;
+
+        // STEP D: Clear the reference so the script knows the flash is finished
+        flashCoroutine = null;
+    }
+}
