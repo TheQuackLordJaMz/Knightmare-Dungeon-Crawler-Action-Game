@@ -1,0 +1,114 @@
+using System.Collections;
+using UnityEngine;
+using UnityEngine.InputSystem; // Accesses the New Input System API
+
+/// <summary>
+/// Handles player input, physics-based movement, and rotation using the New Input System.
+/// This script bridges the gap between hardware input and physical Rigidbody movement.
+/// </summary>
+public class PlayerMovement : MonoBehaviour
+{
+    [Header("Movement Settings")]
+    [Tooltip("How fast the player moves in meters per second.")]
+    public float moveSpeed = 6f;
+    [SerializeField]
+    [Tooltip("How snappy the rotation is. Higher = faster turns.")]
+    private float rotationSpeed = 10f;
+
+    [Header("References")]
+    [SerializeField] private Rigidbody rb;
+
+    // The generated C# class from your .inputactions asset. 
+    // This holds all your button mappings (Move, Attack, etc.)
+    private PlayerControls controls;
+
+    // Stores the raw X and Y values from your joystick or WASD (e.g., 0, 1)
+    private Vector2 moveInput = Vector2.zero;
+
+    // Helper property: Other scripts (like Animations) can check this to see if we are moving.
+    // .magnitude returns a value from 0 to 1 based on how far the stick is pushed.
+    public float CurrentInputMagnitude => moveInput.magnitude;
+
+    private void Awake()
+    {
+        // 1. Create a new instance of your Input Action asset
+        controls = new PlayerControls();
+
+        // 2. CALLBACK SUBSCRIPTIONS (Events):
+        // 'performed' fires whenever the stick moves. We read that 2D value into moveInput.
+        controls.Gameplay.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
+
+        // 'canceled' fires when the stick is released. We reset moveInput to prevent "ghost walking."
+        controls.Gameplay.Move.canceled += ctx => moveInput = Vector2.zero;
+
+        // 'started' fires the moment the Attack button is pressed down.
+        controls.Gameplay.Attack.started += ctx =>
+        {
+            // SAFETY: Only trigger attack if this script is active (e.g., not during a cutscene)
+            if (this.enabled)
+            {
+                GetComponent<PlayerCombat>().OnAttack();
+            }
+        };
+    }
+
+    private void Start()
+    {
+        // Ensure we have a reference to the Rigidbody for physics calculations
+        if (rb == null) rb = GetComponent<Rigidbody>();
+    }
+
+    /// <summary>
+    /// FixedUpdate runs on a reliable timer (usually 50 times per second).
+    /// This is where all Rigidbody physics movement should happen to avoid jitter.
+    /// </summary>
+    private void FixedUpdate()
+    {
+        // GUARD CLAUSE: If the player is dead (checked via PlayerCollisions), stop all movement.
+        if (GetComponent<PlayerCollisions>().isDead) return;
+
+        MovePlayer();
+
+        // ZERO OUT VELOCITY: Prevents outside forces (like sliding off ramps) from 
+        // accumulating speed while we are trying to control movement manually.
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+    }
+
+    // MANDATORY: The New Input System must be manually enabled/disabled with the script.
+    private void OnEnable() => controls.Enable();
+    private void OnDisable()
+    {
+        controls.Disable();
+        moveInput = Vector2.zero; // Stop input immediately if we are stunned or disabled
+    }
+
+    /// <summary>
+    /// Converts 2D input into 3D movement and smoothly rotates the character.
+    /// </summary>
+    private void MovePlayer()
+    {
+        // 1. DIRECTION: Convert Vector2 (X, Y) to Vector3 (X, 0, Z) for the 3D floor.
+        Vector3 move = new Vector3(moveInput.x, 0f, moveInput.y);
+
+        // 2. NORMALIZE: Ensures walking diagonally (1, 1) isn't faster than walking forward (0, 1).
+        if (move.sqrMagnitude > 1f)
+            move.Normalize();
+
+        // 3. DEADZONE: If the input is tiny (like stick drift), ignore it to prevent jitter.
+        if (move.sqrMagnitude < 0.01f)
+            return;
+
+        // 4. POSITION: Current Position + (Direction * Speed * Time since last physics step).
+        Vector3 targetPosition = rb.position + move * moveSpeed * Time.fixedDeltaTime;
+
+        // MovePosition is better than "transform.position" because it respects walls/colliders.
+        rb.MovePosition(targetPosition);
+
+        // 5. ROTATION: LookRotation creates a rotation facing our 'move' direction.
+        Quaternion targetRotation = Quaternion.LookRotation(move);
+
+        // Slerp (Spherical Linear Interpolation) makes the turn feel smooth instead of snapping.
+        rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime));
+    }
+}
